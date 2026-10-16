@@ -1,5 +1,5 @@
 # Trip Split — Cloudflare configuration
-# Fill in the four values marked "CHANGE ME" (the README walks you through each one).
+# The README walks you through each value.
 
 name = "trip-split"
 main = "src/worker.js"
@@ -15,6 +15,9 @@ database_name = "trip-split"
 database_id = "21b8b57b-99cc-44f9-a181-b4bcd4874fa7"          # from: npx wrangler d1 create trip-split
 
 [vars]
-ADMIN_EMAIL = "info@ruggedcustoms.com"           # your own email: the organizer
-ACCESS_TEAM_DOMAIN = "https://dry-rain-377e.cloudflareaccess.com"   # your Zero Trust team domain
-ACCESS_AUD = "7e66418ae676401c6e475e41db7c1ae0a58046a54789a839e3eebec5da654f68"           # the Access app's AUD tag
+ADMIN_EMAIL = "info@ruggedcustoms.com"           # identifies the organizer's account; not used to send email
+
+# Passwords are Cloudflare secrets, not stored here (this file is public):
+#   npx wrangler secret put GROUP_PASSWORD    (what friends type)
+#   npx wrangler secret put ADMIN_PASSWORD    (what the organizer types)
+#   npx wrangler secret put SESSION_SECRET    (any long random text)

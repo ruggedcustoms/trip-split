@@ -4,7 +4,7 @@
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 const S={members:[],trips:[],expenses:[],polls:[],votes:[],messages:[],disputes:[]};
 let state="loading";              // loading | ready | error
-let version=-1, meId=null, myEmail="";
+let version=-1, meId=null;
 const TABS=["home","money","polls","chat","group"];
 let tab=ls.get("ts-tab")||"home";
 if(TABS.indexOf(location.hash.slice(1))>=0) tab=location.hash.slice(1);
@@ -29,9 +29,8 @@ async function api(method,path,body){
   try{
     r=await fetch(path,{method,credentials:"same-origin",headers:body?{"content-type":"application/json"}:{},body:body?JSON.stringify(body):undefined});
   }catch(e){const x=new Error("You're offline. Check your internet and try again.");x.status=0;throw x}
-  // An expired Cloudflare sign-in answers with a redirect to the login page instead of JSON.
   const type=r.headers.get("content-type")||"";
-  if(r.redirected||(!type.includes("json")&&r.status!==204)){const x=new Error("Your sign-in expired. Reload the app to sign in again.");x.status=401;throw x}
+  if(!type.includes("json")&&r.status!==204){const x=new Error("Something went wrong. Reload and try again.");x.status=r.status;throw x}
   let d=null;try{d=await r.json()}catch(e){}
   if(!r.ok){const x=new Error(d&&d.error||"Something went wrong. Try again.");x.status=r.status;throw x}
   return d;
@@ -108,7 +107,7 @@ function viewHome(){
   h+='<div class="stats"><div><span class="label">You paid</span><b class="num">'+inr(all.paid)+'</b></div><div><span class="label">'+(all.bal>0?"Owed to you":all.bal<0?"You owe":"Balance")+'</span><b class="num">'+(all.bal===0?"Settled":inr(all.bal))+'</b></div><div><span class="label">Group total</span><b class="num">'+inr(all.total)+'</b></div></div>';
   h+='</section>';
 
-  if(S.members.length<2) h+='<div class="card empty"><b>Add your friends</b>Add each friend\'s name and email so they can sign in.<div style="margin-top:14px"><button class="btn" data-act="goGroup" type="button">Add friends</button></div></div>';
+  if(S.members.length<2) h+='<div class="card empty"><b>Add your friends</b>Add each friend\'s name, then share the link and group password.<div style="margin-top:14px"><button class="btn" data-act="goGroup" type="button">Add friends</button></div></div>';
 
   h+='<section class="stack" style="gap:10px"><div class="row"><h2>Trips</h2><button class="btn small" data-act="newTrip" type="button">+ New trip</button></div>';
   if(!S.trips.length) h+='<div class="card empty"><b>No trips yet</b>Create a trip, pick who\'s going, then add expenses, polls and chat to it.</div>';
@@ -238,13 +237,13 @@ function viewChat(){
 
 function viewGroup(){
   let h='<section class="card stack" style="gap:12px"><h2>Your friends</h2>';
-  h+='<form class="stack" id="addMember" style="gap:8px"><input type="text" id="memberName" placeholder="Friend\'s name" maxlength="40" autocomplete="off" aria-label="Friend\'s name"><div class="inline"><input type="email" id="memberEmail" placeholder="Their email" maxlength="120" autocomplete="off" aria-label="Their email" inputmode="email"><button class="btn" type="submit" style="flex:none">Add</button></div></form>';
+  h+='<form class="stack" id="addMember" style="gap:8px"><input type="text" id="memberName" placeholder="Friend\'s name" maxlength="40" autocomplete="off" aria-label="Friend\'s name"><button class="btn" type="submit">Add</button></form>';
   h+='<div class="list">';
   S.members.forEach(m=>{
-    h+='<div class="item" style="align-items:center"><div class="avatar'+(m.id===meId?' me-av':'')+'">'+esc(initials(m.name))+'</div><div class="main"><div class="t">'+esc(m.name)+(m.id===meId?' <span class="hint">(you)</span>':'')+'</div><div class="s">'+esc(m.email)+'</div></div>'+(m.id===meId?'':'<button class="btn link danger" data-act="delMember" data-id="'+esc(m.id)+'" type="button">'+(pendingDel===m.id?"Tap again":"Remove")+'</button>')+'</div>';
+    h+='<div class="item" style="align-items:center"><div class="avatar'+(m.id===meId?' me-av':'')+'">'+esc(initials(m.name))+'</div><div class="main"><div class="t">'+esc(m.name)+(m.id===meId?' <span class="hint">(you)</span>':'')+'</div></div>'+(m.id===meId?'':'<button class="btn link danger" data-act="delMember" data-id="'+esc(m.id)+'" type="button">'+(pendingDel===m.id?"Tap again":"Remove")+'</button>')+'</div>';
   });
   h+='</div><div class="hint">New friends aren\'t added to existing trips automatically. Use “Edit trip” on the Dashboard to add them.</div></section>';
-  h+='<section class="card stack" style="gap:8px"><h2>Inviting friends</h2><div class="hint" style="font-size:.9rem">Add a friend\'s name and email here, then send them this app\'s link. They sign in with a one-time code sent to that email. Only the people on this list can see your trips. Only the person who adds an expense can delete it; everyone else can raise a dispute.</div><div class="row"><span class="s" id="appUrl" style="overflow-wrap:anywhere">'+esc(location.origin)+'</span><button class="btn small ghost" data-act="copyLink" type="button">Copy link</button></div></section>';
+  h+='<section class="card stack" style="gap:8px"><h2>Inviting friends</h2><div class="hint" style="font-size:.9rem">Add a friend\'s name here, then send them this app\'s link and the group password. They type the password and tap their name. Only the people on this list can sign in. Only the person who adds an expense can delete it; everyone else can raise a dispute.</div><div class="row"><span class="s" id="appUrl" style="overflow-wrap:anywhere">'+esc(location.origin)+'</span><button class="btn small ghost" data-act="copyLink" type="button">Copy link</button></div></section>';
   return h;
 }
 
@@ -397,7 +396,8 @@ function pollSheet(){
   $("#addOpt").onclick=()=>{const l=$("#optList");const n=l.children.length;if(n>=8){toast("Polls can have up to 8 options.");return}l.insertAdjacentHTML("beforeend",optField(n));l.lastElementChild.focus()};
 }
 function meSheet(){
-  plainSheet('<div class="row"><h2>'+esc(nameOf(meId))+'</h2><button class="btn link" type="button" id="cancel">Close</button></div><div class="hint" style="font-size:.9rem">Signed in as '+esc(myEmail)+'. Only you can delete the expenses you add.</div><a class="btn ghost" href="/cdn-cgi/access/logout">Sign out</a>');
+  plainSheet('<div class="row"><h2>'+esc(nameOf(meId))+'</h2><button class="btn link" type="button" id="cancel">Close</button></div><div class="hint" style="font-size:.9rem">Only you can delete the expenses you add.</div><button class="btn ghost" type="button" id="signOut">Sign out</button>');
+  $("#signOut").onclick=async()=>{try{await api("POST","/api/logout")}catch(e){}location.reload()};
 }
 function disputeSheet(e){
   const quick=["Wrong amount","I wasn't part of this","Wrong person paid","Duplicate entry"];
@@ -450,9 +450,9 @@ document.addEventListener("click",async e=>{
 });
 document.addEventListener("submit",async e=>{
   if(e.target.id!=="addMember")return; e.preventDefault();
-  const name=$("#memberName").value.trim(), email=$("#memberEmail").value.trim();
-  if(!name||!email){toast("Enter your friend's name and email.");return}
-  const ok=await write(()=>api("POST","/api/members",{name,email}),name+" added");
+  const name=$("#memberName").value.trim();
+  if(!name){toast("Enter your friend's name.");return}
+  const ok=await write(()=>api("POST","/api/members",{name}),name+" added");
   if(ok){$("#memberName").value="";$("#memberEmail").value="";$("#memberName").focus()}
 });
 $("#composer").addEventListener("submit",async e=>{
@@ -510,26 +510,34 @@ function gate(html){
   $("#tabbar").hidden=true;$("#meBtn").hidden=true;$("#fab").hidden=true;$("#composer").hidden=true;
   $("#view").innerHTML='<div class="gate">'+html+'</div>';
 }
-async function boot(){
-  render();
-  let me;
-  try{me=await api("GET","/api/me")}
-  catch(e){
-    if(e.status===401){gate('<div class="card"><h2>Sign in again</h2><div class="hint">Your sign-in expired.</div><button class="btn" type="button" onclick="location.reload()">Sign in</button></div>');return}
-    gate('<div class="card"><h2>Can\'t reach Trip Split</h2><div class="hint">'+esc(e.message)+'</div><button class="btn" type="button" onclick="location.reload()">Try again</button></div>');return;
-  }
-  myEmail=me.email;
-  if(!me.member){
-    if(me.admin){
-      gate('<form class="card" id="joinForm"><h2>Welcome to Trip Split</h2><div class="hint">You\'re the organizer. What should your friends call you?</div><input type="text" id="joinName" placeholder="Your name" maxlength="40" required autocomplete="name"><button class="btn" type="submit">Get started</button><div class="hint">Signed in as '+esc(me.email)+'</div></form>');
+function loginGate(){
+  gate('<form class="card" id="loginForm"><h2>Trip Split</h2><div class="hint">Enter the group password your organizer shared.</div><input type="password" id="loginPw" placeholder="Password" required autocomplete="current-password"><button class="btn" type="submit">Continue</button></form>');
+  $("#loginPw").focus();
+  $("#loginForm").onsubmit=async e=>{
+    e.preventDefault();const password=$("#loginPw").value;if(!password)return;
+    let d;try{d=await api("POST","/api/login",{password})}catch(x){toast(x.message);return}
+    if(d.ok){location.reload();return}
+    if(d.needName){
+      gate('<form class="card" id="joinForm"><h2>Welcome to Trip Split</h2><div class="hint">You\'re the organizer. What should your friends call you?</div><input type="text" id="joinName" placeholder="Your name" maxlength="40" required autocomplete="name"><button class="btn" type="submit">Get started</button></form>');
       $("#joinForm").onsubmit=async e=>{
         e.preventDefault();const name=$("#joinName").value.trim();if(!name)return;
-        try{await api("POST","/api/join",{name});location.reload()}catch(x){toast(x.message)}
+        try{await api("POST","/api/login",{password,name});location.reload()}catch(x){toast(x.message)}
       };
-    }else{
-      gate('<div class="card"><h2>You\'re not in this group yet</h2><div class="hint">You signed in as <b>'+esc(me.email)+'</b>. Ask the organizer to add this email on the Friends tab, then reload.</div><button class="btn" type="button" onclick="location.reload()">Reload</button><a class="btn ghost" href="/cdn-cgi/access/logout">Use a different email</a></div>');
+      return;
     }
-    return;
+    if(!d.members.length){gate('<div class="card"><h2>No friends added yet</h2><div class="hint">Ask the organizer to add your name on the Friends tab, then try again.</div><button class="btn" type="button" onclick="location.reload()">Try again</button></div>');return}
+    gate('<div class="card"><h2>Who are you?</h2><div class="hint">Tap your name.</div>'+d.members.map(m=>'<button class="btn ghost" type="button" data-id="'+esc(m.id)+'">'+esc(m.name)+'</button>').join("")+'<div class="hint">Not on the list? Ask the organizer to add you.</div></div>');
+    document.querySelectorAll(".gate [data-id]").forEach(btn=>btn.onclick=async()=>{
+      try{await api("POST","/api/login",{password,memberId:btn.dataset.id});location.reload()}catch(x){toast(x.message)}
+    });
+  };
+}
+async function boot(){
+  render();
+  try{await api("GET","/api/me")}
+  catch(e){
+    if(e.status===401){loginGate();return}
+    gate('<div class="card"><h2>Can\'t reach Trip Split</h2><div class="hint">'+esc(e.message)+'</div><button class="btn" type="button" onclick="location.reload()">Try again</button></div>');return;
   }
   $("#tabbar").hidden=false;$("#meBtn").hidden=false;
   try{await refresh()}catch(e){state="error";render();toast(e.message)}

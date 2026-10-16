@@ -1,6 +1,6 @@
 // Trip Split service worker: makes the app installable and lets the app
 // shell open without signal. Shared data (/api/) is never cached.
-const CACHE = "trip-split-v1";
+const CACHE = "trip-split-v2";
 const SHELL = ["/", "/app.js", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -18,7 +18,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/cdn-cgi/")) return;
+  if (url.pathname.startsWith("/api/")) return;
   // Network first, so updates and sign-in always win; fall back to the cached shell offline.
   e.respondWith(
     fetch(e.request)

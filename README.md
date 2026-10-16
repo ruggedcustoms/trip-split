@@ -4,7 +4,7 @@ Trip Split runs on your own free Cloudflare account:
 
 - **Cloudflare Workers** hosts the app.
 - **Cloudflare D1** stores trips, expenses, disputes, polls and chat.
-- **Cloudflare Access** handles sign-in: friends type their email and get a one-time code. No passwords.
+- **Sign-in** is a group password: friends type it and tap their name. The organizer has a separate password.
 
 You need a laptop, about 30 minutes, and an internet connection. Steps 1–7 are done once. Step 8 is how you update the app later.
 
@@ -57,7 +57,7 @@ You need a laptop, about 30 minutes, and an internet connection. Steps 1–7 are
    ```
    Copy that ID. (If Wrangler asks whether to add it to your config for you, say yes, then check `wrangler.toml` that it's there.)
 3. Open `wrangler.toml` in any text editor (Notepad, TextEdit or VS Code) and replace `CHANGE-ME-database-id` with your ID.
-4. While the file is open, replace `CHANGE-ME@example.com` next to `ADMIN_EMAIL` with **your own email**. This makes you the organizer. Save the file.
+4. While the file is open, replace `CHANGE-ME@example.com` next to `ADMIN_EMAIL` with **your own email**. It's only used to recognize the organizer's account. Save the file.
 5. Create the tables:
    ```
    npm run db:setup
@@ -76,53 +76,38 @@ At the end it prints your app's address, like:
 https://trip-split.YOUR-NAME.workers.dev
 ```
 
-Save this link. Don't open it yet; sign-in isn't set up, so it will show an error.
+Save this link. Don't open it yet; the passwords aren't set, so it will show an error.
 
-## 6. Turn on sign-in (Cloudflare Access)
+## 6. Set the passwords
 
-1. Go to **https://dash.cloudflare.com** → **Workers & Pages** → click **trip-split**.
-2. Open **Settings** → **Domains & Routes**. Next to the **workers.dev** row, open its menu and choose **Cloudflare Access** (enable it).
-   - If Cloudflare asks you to set up **Zero Trust** first, pick a team name and choose the **Free** plan. It may ask for a payment method even for the free plan; the free plan covers up to 50 people.
-3. When Access is enabled, Cloudflare shows two values. Copy both:
-   - **Audience (AUD) tag**: a long string of letters and numbers.
-   - **JWKS URL**: looks like `https://YOURTEAM.cloudflareaccess.com/cdn-cgi/access/certs`.
-4. Open `wrangler.toml` again and fill in:
-   - `ACCESS_AUD` → the Audience tag.
-   - `ACCESS_TEAM_DOMAIN` → the start of the JWKS URL, **without** `/cdn-cgi/access/certs`. Example: `https://yourteam.cloudflareaccess.com`
-5. Save, then deploy again:
-   ```
-   npx wrangler deploy
-   ```
+Passwords are stored as Cloudflare secrets, never in the project files. Run each command and type the value when asked:
 
-### Let your friends sign in
+```
+npx wrangler secret put GROUP_PASSWORD
+npx wrangler secret put ADMIN_PASSWORD
+npx wrangler secret put SESSION_SECRET
+```
 
-By default Access may only let *you* in. Change that so anyone can request a code, and let the app decide who's in the group:
+- `GROUP_PASSWORD`: what your friends type to sign in.
+- `ADMIN_PASSWORD`: what you, the organizer, type. Keep it to yourself.
+- `SESSION_SECRET`: any long random text. You never type it again.
 
-1. Go to **https://one.dash.cloudflare.com** (Zero Trust) → **Access** → **Applications**.
-2. Open the **trip-split** application → **Policies** → edit the policy (or add one):
-   - **Action:** Allow
-   - **Include:** **Everyone**
-3. Save.
-
-This is safe: anyone can receive a code, but only the emails you add on the app's **Friends** tab can see anything. Everyone else sees "You're not in this group yet".
-
-Also check **Settings** → **Authentication** in Zero Trust: **One-time PIN** should be listed as a login method. It's on by default.
+Secrets take effect immediately; no redeploy needed. Changing a password signs out everyone who used it.
 
 ## 7. First run
 
-1. Open your app link on your phone or laptop.
-2. Enter **your email** (the one you put as `ADMIN_EMAIL`). Cloudflare emails you a code. Enter it.
-3. Type your name and tap **Get started**.
-4. Go to the **Friends** tab and add each friend's **name and email**.
-5. Send your friends the link (the **Copy link** button on the Friends tab).
-6. Each friend opens it, enters their email, types the code they receive, and they're in.
+1. Open your app link.
+2. Type the **organizer password**, then your name, and tap **Get started**.
+3. Go to the **Friends** tab and add each friend's **name**.
+4. Send your friends the link (the **Copy link** button on the Friends tab) and the **group password**.
+5. Each friend opens it, types the group password and taps their name. They stay signed in for a year on that phone.
 
 ### Install it like an app
 
 - **Android (Chrome):** open the link → menu **⋮** → **Install app** (or **Add to Home screen**).
 - **iPhone (Safari):** open the link → **Share** button → **Add to Home Screen**.
 
-It opens full screen with its own icon. Sign-in lasts about a day by default. To make it last longer, go to Zero Trust → **Access** → **Applications** → trip-split → **Session duration**, and choose something like **1 month**.
+It opens full screen with its own icon.
 
 ## 8. Updating the app later
 

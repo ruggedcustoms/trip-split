@@ -1,8 +1,7 @@
 // Trip Split — Cloudflare Worker
 // Serves the app from /public and a small JSON API under /api/.
-// Sign-in is handled by Cloudflare Access (email one-time code); this worker
-// verifies the Access token on every API call and only lets in people whose
-// email is in the group's member list.
+// Sign-in is a group password plus picking your name (see "sign-in" below);
+// the organizer has a separate password.
 
 export default {
   async fetch(request, env) {
@@ -31,7 +30,7 @@ function json(data, status = 200, headers = {}) {
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
   });
 }
-const err = (message, status = 400) => json({ error: message }, status);
+const err = (message, status = 400, headers = {}) => json({ error: message }, status, headers);
 
 async function readBody(request) {
   const text = await request.text();
@@ -54,28 +53,41 @@ const parseArr = (s) => { try { const a = JSON.parse(s); return Array.isArray(a)
 const bump = (env) => env.DB.prepare("UPDATE meta SET v = v + 1 WHERE k = 'version'");
 async function run(env, ...statements) { await env.DB.batch([...statements, bump(env)]); }
 
-/* ------------------------------------------------------- Cloudflare Access */
+/* ----------------------------------------------------------------- sign-in */
 
-let jwksCache = { keys: null, at: 0 };
+// Friends sign in with the group password and pick their name; the organizer
+// uses the organizer password. The session is a signed cookie. Each signature
+// covers the password it was issued with, so changing a password signs
+// everyone who used it out.
 
-function b64urlToBytes(s) {
-  s = s.replace(/-/g, "+").replace(/_/g, "/");
-  while (s.length % 4) s += "=";
-  const bin = atob(s);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+const COOKIE = "ts_session";
+const YEAR = 365 * 24 * 3600;
+
+function bytesToB64url(bytes) {
+  let bin = "";
+  for (const b of new Uint8Array(bytes)) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-const b64urlJson = (s) => JSON.parse(new TextDecoder().decode(b64urlToBytes(s)));
 
-async function accessKeys(env, force = false) {
-  if (!force && jwksCache.keys && Date.now() - jwksCache.at < 3600_000) return jwksCache.keys;
-  const team = String(env.ACCESS_TEAM_DOMAIN || "").replace(/\/+$/, "");
-  const res = await fetch(`${team}/cdn-cgi/access/certs`);
-  if (!res.ok) fail(500, "The server couldn't reach Cloudflare Access to check your sign-in.");
-  const data = await res.json();
-  jwksCache = { keys: data.keys || [], at: Date.now() };
-  return jwksCache.keys;
+function requireSecrets(env) {
+  if (!env.GROUP_PASSWORD || !env.ADMIN_PASSWORD || !env.SESSION_SECRET) {
+    fail(500, "Sign-in isn't set up yet. Set GROUP_PASSWORD, ADMIN_PASSWORD and SESSION_SECRET with `npx wrangler secret put`.");
+  }
+}
+
+async function sign(env, memberId, kind) {
+  const pw = kind === "a" ? env.ADMIN_PASSWORD : env.GROUP_PASSWORD;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.SESSION_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${memberId}.${kind}.${pw}`));
+  return bytesToB64url(mac);
+}
+
+// Constant-time comparison, so response timing doesn't leak how much of a guess was right.
+function same(a, b) {
+  a = String(a); b = String(b);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
 }
 
 function readCookie(request, name) {
@@ -84,40 +96,50 @@ function readCookie(request, name) {
   return m ? m[1] : null;
 }
 
-async function signedInEmail(request, env, url) {
-  // Local testing only: `wrangler dev` with DEV_EMAIL in .dev.vars
-  if (env.DEV_EMAIL && (url.hostname === "localhost" || url.hostname === "127.0.0.1")) {
-    return (request.headers.get("x-dev-email") || env.DEV_EMAIL).toLowerCase();
+async function sessionCookie(env, memberId, kind) {
+  const value = `${memberId}.${kind}.${await sign(env, memberId, kind)}`;
+  return `${COOKIE}=${value}; Path=/; Max-Age=${YEAR}; HttpOnly; Secure; SameSite=Lax`;
+}
+const clearCookie = `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+
+// Returns { memberId, kind } for a valid session cookie, or null.
+async function readSession(request, env) {
+  const raw = readCookie(request, COOKIE);
+  if (!raw) return null;
+  const [memberId, kind, sig] = raw.split(".");
+  if (!memberId || (kind !== "a" && kind !== "m") || !sig) return null;
+  if (!same(sig, await sign(env, memberId, kind))) return null;
+  return { memberId, kind };
+}
+
+const adminEmail = (env) => String(env.ADMIN_EMAIL || "organizer").trim().toLowerCase();
+
+async function handleLogin(request, env) {
+  const b = await readBody(request);
+  const password = typeof b.password === "string" ? b.password : "";
+  // Slow down password guessing a little.
+  await new Promise((r) => setTimeout(r, 400));
+
+  if (same(password, env.ADMIN_PASSWORD)) {
+    let row = await env.DB.prepare("SELECT * FROM members WHERE email = ?").bind(adminEmail(env)).first();
+    if (!row) {
+      if (!b.name) return json({ needName: true });
+      const name = str(b.name, 40, "Your name");
+      const id = newId();
+      await run(env, env.DB.prepare("INSERT INTO members (id, name, email, created_at) VALUES (?, ?, ?, ?)").bind(id, name, adminEmail(env), Date.now()));
+      row = { id };
+    }
+    return json({ ok: true }, 200, { "set-cookie": await sessionCookie(env, row.id, "a") });
   }
-  if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD || String(env.ACCESS_AUD).startsWith("REPLACE")) {
-    fail(500, "Sign-in isn't set up yet. Add ACCESS_TEAM_DOMAIN and ACCESS_AUD to wrangler.toml and deploy again.");
+
+  if (same(password, env.GROUP_PASSWORD)) {
+    const friends = (await env.DB.prepare("SELECT id, name FROM members WHERE email != ? ORDER BY name").bind(adminEmail(env)).all()).results;
+    if (!b.memberId) return json({ pickName: true, members: friends });
+    if (!friends.some((f) => f.id === b.memberId)) fail(400, "Pick your name from the list.");
+    return json({ ok: true }, 200, { "set-cookie": await sessionCookie(env, b.memberId, "m") });
   }
-  const token = request.headers.get("cf-access-jwt-assertion") || readCookie(request, "CF_Authorization");
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  let header, payload;
-  try { header = b64urlJson(parts[0]); payload = b64urlJson(parts[1]); } catch { return null; }
 
-  let keys = await accessKeys(env);
-  let jwk = keys.find((k) => k.kid === header.kid);
-  if (!jwk) { keys = await accessKeys(env, true); jwk = keys.find((k) => k.kid === header.kid); }
-  if (!jwk) return null;
-
-  const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-  const valid = await crypto.subtle.verify(
-    "RSASSA-PKCS1-v1_5", key, b64urlToBytes(parts[2]),
-    new TextEncoder().encode(parts[0] + "." + parts[1]),
-  );
-  if (!valid) return null;
-
-  const now = Math.floor(Date.now() / 1000);
-  const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-  const team = String(env.ACCESS_TEAM_DOMAIN).replace(/\/+$/, "");
-  if (!aud.includes(env.ACCESS_AUD)) return null;
-  if (payload.exp && payload.exp < now) return null;
-  if (payload.iss && payload.iss.replace(/\/+$/, "") !== team) return null;
-  return payload.email ? String(payload.email).toLowerCase() : null;
+  fail(401, "That password isn't right.");
 }
 
 /* --------------------------------------------------------------- data maps */
@@ -148,30 +170,21 @@ async function requireOnTrip(env, trip, me) {
 /* --------------------------------------------------------------------- API */
 
 async function handleApi(request, env, url) {
-  const email = await signedInEmail(request, env, url);
-  if (!email) return err("You're not signed in. Reload the app to sign in again.", 401);
-  const admin = email === String(env.ADMIN_EMAIL || "").trim().toLowerCase();
-  const meRow = await env.DB.prepare("SELECT * FROM members WHERE email = ?").bind(email).first();
-  const me = meRow ? mapMember(meRow) : null;
+  requireSecrets(env);
   const path = url.pathname.replace(/\/+$/, "");
   const method = request.method;
   let m;
 
-  // --- who am I / first-time setup -------------------------------------
-  if (path === "/api/me" && method === "GET") {
-    const count = (await env.DB.prepare("SELECT COUNT(*) AS n FROM members").first()).n;
-    return json({ email, admin, member: me, groupEmpty: count === 0 });
-  }
-  if (path === "/api/join" && method === "POST") {
-    if (me) return json({ ok: true, member: me });
-    if (!admin) fail(403, "You're not in this group yet. Ask the organizer to add your email on the Friends tab.");
-    const b = await readBody(request);
-    const name = str(b.name, 40, "Your name");
-    const id = newId();
-    await run(env, env.DB.prepare("INSERT INTO members (id, name, email, created_at) VALUES (?, ?, ?, ?)").bind(id, name, email, Date.now()));
-    return json({ ok: true });
-  }
-  if (!me) return err("You're not in this group yet. Ask the organizer to add your email on the Friends tab.", 403);
+  if (path === "/api/login" && method === "POST") return handleLogin(request, env);
+  if (path === "/api/logout" && method === "POST") return json({ ok: true }, 200, { "set-cookie": clearCookie });
+
+  const session = await readSession(request, env);
+  const meRow = session && await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(session.memberId).first();
+  if (!meRow) return err("You're not signed in.", 401, { "set-cookie": clearCookie });
+  const me = mapMember(meRow);
+  const admin = session.kind === "a" && meRow.email === adminEmail(env);
+
+  if (path === "/api/me" && method === "GET") return json({ admin, member: me });
 
   // --- reads -------------------------------------------------------------
   if (path === "/api/version" && method === "GET") {
@@ -211,11 +224,10 @@ async function handleApi(request, env, url) {
   if (path === "/api/members" && method === "POST") {
     const b = await readBody(request);
     const name = str(b.name, 40, "Name");
-    const mail = str(b.email, 120, "Email").toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) fail(400, "That email address doesn't look right.");
-    if (await env.DB.prepare("SELECT 1 FROM members WHERE email = ?").bind(mail).first()) fail(409, "Someone with that email is already in the group.");
     if (await env.DB.prepare("SELECT 1 FROM members WHERE lower(name) = lower(?)").bind(name).first()) fail(409, `${name} is already in the group. Use a different name, like adding an initial.`);
-    await run(env, env.DB.prepare("INSERT INTO members (id, name, email, created_at) VALUES (?, ?, ?, ?)").bind(newId(), name, mail, Date.now()));
+    // Emails aren't used for sign-in any more; the column is unique, so store a placeholder.
+    const id = newId();
+    await run(env, env.DB.prepare("INSERT INTO members (id, name, email, created_at) VALUES (?, ?, ?, ?)").bind(id, name, `${id}@member`, Date.now()));
     return json({ ok: true });
   }
   if ((m = path.match(/^\/api\/members\/([\w-]+)$/)) && method === "DELETE") {
