@@ -1,9 +1,9 @@
-// Vercel function for every /api/* request. The app's static files are served
-// by Vercel from public/; the data lives in Cloudflare D1.
-import { apiResponse } from "../src/worker.js";
-import { d1OverHttp } from "../src/d1-http.js";
+// Vercel function for every /api/* request. Vercel builds the React app with
+// Vite and serves it from dist/; the data lives in Cloudflare D1.
+import { apiResponse } from "../server/worker.js";
+import { d1OverHttp } from "../server/d1-http.js";
 
-const env = {
+const env = () => ({
   DB: d1OverHttp({
     accountId: process.env.CF_ACCOUNT_ID,
     databaseId: process.env.D1_DATABASE_ID,
@@ -13,7 +13,7 @@ const env = {
   GROUP_PASSWORD: process.env.GROUP_PASSWORD,
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
   SESSION_SECRET: process.env.SESSION_SECRET,
-};
+});
 
-const handle = (request) => apiResponse(request, env);
+const handle = (request) => apiResponse(request, env());
 export { handle as GET, handle as POST, handle as PUT, handle as DELETE };

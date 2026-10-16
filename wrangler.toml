@@ -2,11 +2,11 @@
 # The README walks you through each value.
 
 name = "trip-split"
-main = "src/worker.js"
+main = "server/worker.js"
 compatibility_date = "2025-06-01"
 
 [assets]
-directory = "./public"
+directory = "./dist"
 binding = "ASSETS"
 
 [[d1_databases]]

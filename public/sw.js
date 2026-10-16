@@ -1,7 +1,7 @@
 // Trip Split service worker: makes the app installable and lets the app
 // shell open without signal. Shared data (/api/) is never cached.
-const CACHE = "trip-split-v2";
-const SHELL = ["/", "/app.js", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png"];
+const CACHE = "trip-split-v3";
+const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));

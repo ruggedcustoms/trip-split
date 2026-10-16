@@ -1,125 +1,79 @@
-# Trip Split — deploy guide
+# Trip Split
 
-Trip Split runs on your own free Cloudflare account:
+Split trip expenses, run polls and chat with your friends.
 
-- **Cloudflare Workers** hosts the app.
-- **Cloudflare D1** stores trips, expenses, disputes, polls and chat.
-- **Sign-in** is a group password: friends type it and tap their name. The organizer has a separate password.
+- **React + Vite** app, hosted on **Vercel** (Vite preset).
+- **API**: one Vercel function, `api/[...path].js`, running the routes in `server/worker.js`.
+- **Data**: a **Cloudflare D1** database, reached over Cloudflare's HTTP API (`server/d1-http.js`).
+- **Sign-in**: friends type the group password and tap their name. The organizer has a separate password.
 
-You need a laptop, about 30 minutes, and an internet connection. Steps 1–7 are done once. Step 8 is how you update the app later.
+## Project layout
 
----
+| Path | What it is |
+|---|---|
+| `index.html`, `src/` | The React app (screens in `src/views/`, pop-up forms in `src/sheets/`) |
+| `public/` | Icons, web-app manifest and service worker, copied as-is |
+| `api/[...path].js` | Vercel function for every `/api/*` request |
+| `server/` | API routes and the D1-over-HTTP adapter |
+| `schema.sql` | Database tables |
+| `wrangler.toml` | Only used for database commands (`npm run db:setup`, backups) |
 
-## 1. Install Node.js
+## Settings (Vercel environment variables)
 
-1. Go to **https://nodejs.org** and download the **LTS** version.
-2. Install it with the default options.
-3. Open a terminal:
-   - **Windows:** press the Windows key, type `PowerShell`, open it.
-   - **Mac:** press Cmd + Space, type `Terminal`, open it.
-4. Check it worked:
-   ```
-   node --version
-   ```
-   You should see something like `v22.x.x`.
+| Name | Value |
+|---|---|
+| `CF_ACCOUNT_ID` | Your Cloudflare account ID |
+| `D1_DATABASE_ID` | The D1 database ID (`npx wrangler d1 list`) |
+| `CF_API_TOKEN` | A Cloudflare API token with **Account → D1 → Edit** |
+| `ADMIN_EMAIL` | Identifies the organizer's account; no email is sent |
+| `GROUP_PASSWORD` | What friends type to sign in |
+| `ADMIN_PASSWORD` | What the organizer types |
+| `SESSION_SECRET` | Any long random text |
 
-## 2. Open the project folder
+Add or change one with `npx vercel env add NAME production`, then redeploy. Changing a password signs out everyone who used it.
 
-1. Unzip `trip-split.zip` somewhere easy, like your Desktop.
-2. In the terminal, go into the folder:
-   ```
-   cd Desktop/trip-split
-   ```
-   (On Windows, if that fails, try `cd $HOME\Desktop\trip-split`.)
-3. Install the Cloudflare tool (Wrangler):
+## Deploy
+
+```
+npx vercel deploy --prod
+```
+
+Vercel runs `npm run build` (Vite) and serves `dist/`, plus the function in `api/`.
+
+## Run it on your laptop
+
+1. Put the settings above in a file named `.env.local` (one `NAME=value` per line). It's git-ignored.
+2. Run:
    ```
    npm install
+   npm run dev
    ```
+3. Open the address it prints. `/api/*` runs locally against the real database, so changes you make are real.
 
-## 3. Create a Cloudflare account and log in
+## First run
 
-1. Sign up for free at **https://dash.cloudflare.com/sign-up** if you don't have an account.
-2. In the terminal:
-   ```
-   npx wrangler login
-   ```
-   A browser window opens. Click **Allow**, then come back to the terminal.
-
-## 4. Create the database
-
-1. Run:
-   ```
-   npx wrangler d1 create trip-split
-   ```
-2. It prints a block that includes a line like:
-   ```
-   database_id = "1a2b3c4d-...."
-   ```
-   Copy that ID. (If Wrangler asks whether to add it to your config for you, say yes, then check `wrangler.toml` that it's there.)
-3. Open `wrangler.toml` in any text editor (Notepad, TextEdit or VS Code) and replace `CHANGE-ME-database-id` with your ID.
-4. While the file is open, replace `CHANGE-ME@example.com` next to `ADMIN_EMAIL` with **your own email**. It's only used to recognize the organizer's account. Save the file.
-5. Create the tables:
-   ```
-   npm run db:setup
-   ```
-   Type `y` if it asks to confirm.
-
-## 5. Put the app online
-
-```
-npx wrangler deploy
-```
-
-At the end it prints your app's address, like:
-
-```
-https://trip-split.YOUR-NAME.workers.dev
-```
-
-Save this link. Don't open it yet; the passwords aren't set, so it will show an error.
-
-## 6. Set the passwords
-
-Passwords are stored as Cloudflare secrets, never in the project files. Run each command and type the value when asked:
-
-```
-npx wrangler secret put GROUP_PASSWORD
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler secret put SESSION_SECRET
-```
-
-- `GROUP_PASSWORD`: what your friends type to sign in.
-- `ADMIN_PASSWORD`: what you, the organizer, type. Keep it to yourself.
-- `SESSION_SECRET`: any long random text. You never type it again.
-
-Secrets take effect immediately; no redeploy needed. Changing a password signs out everyone who used it.
-
-## 7. First run
-
-1. Open your app link.
-2. Type the **organizer password**, then your name, and tap **Get started**.
-3. Go to the **Friends** tab and add each friend's **name**.
-4. Send your friends the link (the **Copy link** button on the Friends tab) and the **group password**.
-5. Each friend opens it, types the group password and taps their name. They stay signed in for a year on that phone.
+1. Open the app and type the **organizer password**. The first time, also type your name.
+2. On the **Friends** tab, add each friend's **name**.
+3. Send friends the link (**Copy link** on the Friends tab) and the **group password**.
+4. Each friend types the group password and taps their name. They stay signed in for a year on that phone.
 
 ### Install it like an app
 
 - **Android (Chrome):** open the link → menu **⋮** → **Install app** (or **Add to Home screen**).
 - **iPhone (Safari):** open the link → **Share** button → **Add to Home Screen**.
 
-It opens full screen with its own icon.
-
-## 8. Updating the app later
-
-When you get new versions of the files (for example, from Claude), replace them in the folder and run:
+## New database (only when starting from scratch)
 
 ```
-npx wrangler deploy
+npx wrangler login
+npx wrangler d1 create trip-split
 ```
 
-Your data is not touched by updates.
+Put the new ID in `wrangler.toml` and in `D1_DATABASE_ID`, then create the tables:
 
----
+```
+npm run db:setup
+```
 
 ## Backups
 
@@ -142,26 +96,11 @@ Your data is not touched by updates.
 
 These rules are checked on the server, so they can't be bypassed from a phone.
 
-## Test on your laptop first (optional)
-
-1. Create a file named `.dev.vars` in the project folder containing:
-   ```
-   DEV_EMAIL=you@example.com
-   ```
-   (use the same email as `ADMIN_EMAIL`).
-2. Run:
-   ```
-   npm run db:setup-local
-   npm run dev
-   ```
-3. Open **http://localhost:8787**. Sign-in is skipped locally. Press Ctrl + C in the terminal to stop.
-
 ## Troubleshooting
 
 | What you see | What to do |
 |---|---|
-| "Sign-in isn't set up yet" | Set the three secrets (step 6). |
+| "Sign-in isn't set up yet" | `GROUP_PASSWORD`, `ADMIN_PASSWORD` or `SESSION_SECRET` is missing in Vercel. |
+| "Something went wrong on the server" on every action | Check `CF_API_TOKEN`, `CF_ACCOUNT_ID` and `D1_DATABASE_ID` in Vercel. The function logs (Vercel dashboard → Logs) show the D1 error. |
 | A friend's name isn't in the list | Add their name on the Friends tab, then they try again. |
-| A friend forgot the password | Send them the group password again. To change it, run `npx wrangler secret put GROUP_PASSWORD`; everyone signs in again. |
-| The app shows a Cloudflare sign-in page | Cloudflare Access is still on. Workers & Pages → trip-split → Settings → Domains & Routes → workers.dev → turn Cloudflare Access off. |
-| `npx wrangler deploy` says database not found | The `database_id` in `wrangler.toml` doesn't match. Run `npx wrangler d1 list` to see the right one. |
+| A friend forgot the password | Send them the group password again. |
