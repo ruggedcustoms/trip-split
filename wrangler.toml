@@ -15,6 +15,6 @@ database_name = "trip-split"
 database_id = "21b8b57b-99cc-44f9-a181-b4bcd4874fa7"          # from: npx wrangler d1 create trip-split
 
 [vars]
-ADMIN_EMAIL = "CHANGE-ME@example.com"           # your own email: the organizer
+ADMIN_EMAIL = "info@ruggedcustoms.com"           # your own email: the organizer
 ACCESS_TEAM_DOMAIN = "https://CHANGE-ME.cloudflareaccess.com"   # your Zero Trust team domain
 ACCESS_AUD = "REPLACE-with-application-audience-tag"           # the Access app's AUD tag
