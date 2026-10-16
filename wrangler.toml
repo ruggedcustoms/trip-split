@@ -16,5 +16,5 @@ database_id = "21b8b57b-99cc-44f9-a181-b4bcd4874fa7"          # from: npx wrangl
 
 [vars]
 ADMIN_EMAIL = "info@ruggedcustoms.com"           # your own email: the organizer
-ACCESS_TEAM_DOMAIN = "https://CHANGE-ME.cloudflareaccess.com"   # your Zero Trust team domain
-ACCESS_AUD = "REPLACE-with-application-audience-tag"           # the Access app's AUD tag
+ACCESS_TEAM_DOMAIN = "https://dry-rain-377e.cloudflareaccess.com"   # your Zero Trust team domain
+ACCESS_AUD = "7e66418ae676401c6e475e41db7c1ae0a58046a54789a839e3eebec5da654f68"           # the Access app's AUD tag
