@@ -1,21 +1,27 @@
-// Trip Split — Cloudflare Worker
-// Serves the app from /public and a small JSON API under /api/.
+// Trip Split — API
+// A small JSON API under /api/. Runs as a Vercel function (api/[...path].js)
+// against the Cloudflare D1 database; it can also run as a Cloudflare Worker.
 // Sign-in is a group password plus picking your name (see "sign-in" below);
 // the organizer has a separate password.
 
+// On Vercel, api/[...path].js calls apiResponse() with a D1-over-HTTP binding.
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
-    try {
-      return await handleApi(request, env, url);
-    } catch (e) {
-      if (e instanceof HttpError) return err(e.message, e.status);
-      console.error(e);
-      return err("Something went wrong on the server. Try again.", 500);
-    }
+    return apiResponse(request, env);
   },
 };
+
+export async function apiResponse(request, env) {
+  try {
+    return await handleApi(request, env, new URL(request.url));
+  } catch (e) {
+    if (e instanceof HttpError) return err(e.message, e.status);
+    console.error(e);
+    return err("Something went wrong on the server. Try again.", 500);
+  }
+}
 
 /* ------------------------------------------------------------------ helpers */
 
