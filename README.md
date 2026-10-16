@@ -160,8 +160,8 @@ These rules are checked on the server, so they can't be bypassed from a phone.
 
 | What you see | What to do |
 |---|---|
-| "Sign-in isn't set up yet" | Fill in `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in `wrangler.toml` (step 6), then `npx wrangler deploy`. |
-| "You're not signed in" right after signing in | The AUD tag or team domain doesn't match. Copy them again from the Access application, deploy again. |
-| A friend sees "You're not in this group yet" | Add their exact email on the Friends tab. |
-| A friend never gets the code | Check their spam folder. Make sure the Access policy includes **Everyone** (step 6). |
+| "Sign-in isn't set up yet" | Set the three secrets (step 6). |
+| A friend's name isn't in the list | Add their name on the Friends tab, then they try again. |
+| A friend forgot the password | Send them the group password again. To change it, run `npx wrangler secret put GROUP_PASSWORD`; everyone signs in again. |
+| The app shows a Cloudflare sign-in page | Cloudflare Access is still on. Workers & Pages → trip-split → Settings → Domains & Routes → workers.dev → turn Cloudflare Access off. |
 | `npx wrangler deploy` says database not found | The `database_id` in `wrangler.toml` doesn't match. Run `npx wrangler d1 list` to see the right one. |
