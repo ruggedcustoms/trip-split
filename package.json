@@ -8,13 +8,20 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "db:setup": "npx wrangler d1 execute trip-split --remote --file=schema.sql"
+    "db:setup": "npx wrangler d1 execute trip-split --remote --file=schema.sql",
+    "android:sync": "vite build && cap sync android",
+    "android:open": "cap open android",
+    "android:apk": "vite build && cap sync android && cd android && ./gradlew assembleDebug",
+    "android:run": "vite build && cap run android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@vitejs/plugin-react": "^6.1.2",
     "vite": "^8.3.4"
   }

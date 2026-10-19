@@ -1,0 +1,12 @@
+{
+  "appId": "com.ruggedcustoms.tripsplit",
+  "appName": "Trip Split",
+  "webDir": "dist",
+  "server": {
+    "url": "https://trip-split-kappa-lac.vercel.app",
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#1F5F63"
+  }
+}
